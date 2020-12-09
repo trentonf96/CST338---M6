@@ -129,7 +129,8 @@ class GameController
    {
       public void actionPerformed(ActionEvent e)
       {
-         
+         GameModel.myScore++;
+         view.updateScore(GameModel.computerScore, GameModel.myScore);
       }
    }
    
@@ -192,12 +193,12 @@ class GameController
                            view.updateMessage("Successful move, choose another card");
                            
                            // Play card and draw from deck
-                           playAreaCards[stack] = model.getFramework().getHand(1).playCard(idx);
+                           playAreaCards[stack] = model.getFramework().playCard(1, idx);
                            model.getFramework().takeCard(1);
                            
-                           //
+                           // Update playing area, user's hand, and number of cards left in the deck
                            view.updatePlayArea(playAreaCards);
-                           view.updateHands(idx, model.getFramework());
+                           view.updateHand(idx, model.getFramework());
                            view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
                         }
                         else
@@ -216,23 +217,29 @@ class GameController
                                  view.updateMessage("Computer player placed card");
                                  
                                  //
-                                 playAreaCards[z] = model.getFramework().getHand(0).playCard(x);
+                                 playAreaCards[z] = model.getFramework().playCard(0, x);
                                  model.getFramework().takeCard(0);
                                  
                                  //
                                  view.updatePlayArea(playAreaCards);
-                                 view.updateHands(x, model.getFramework());
+                                 view.updateHand(x, model.getFramework());
                                  view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
+                                 break;
+                              }
+                              else
+                              {
+                                 GameModel.computerScore++;
+                                 view.updateScore(GameModel.computerScore, GameModel.myScore);
                               }
                            }
                         }
                      }
                   });
                }
-               view.updateScore(GameModel.myScore, GameModel.computerScore);
+               //view.updateScore(GameModel.myScore, GameModel.computerScore);
             }
          });
-         view.updateHands(k, model.getFramework());
+         view.updateHand(k, model.getFramework());
       }
    }
 }
@@ -340,6 +347,12 @@ class GameView
 
       // give human random cards
       humanLabels[k] = new JLabel(GUICard.getIcon(LowCardGame.getHand(1).inspectCard(k)));
+      
+      // deal back cards to computer
+      myCardTable.pnlComputerHand.add(computerLabels[k]);
+
+      // give human random cards
+      myCardTable.pnlHumanHand.add(humanLabels[k]);
    }
    
    static void updateTimer(int min, int sec)
@@ -362,19 +375,19 @@ class GameView
       deckLabel.setText("# of Cards in the Deck: " + cards);
    }
    
-   public void updateHands(int k, CardGameFramework LowCardGame)
+   public void updateHand(int k, CardGameFramework LowCardGame)
    {
-      // deal back cards to computer
-      myCardTable.pnlComputerHand.add(computerLabels[k]);
-
-      // give human random cards
-      myCardTable.pnlHumanHand.add(humanLabels[k]);
-      
+      humanLabels[k].setIcon(GUICard.getIcon(LowCardGame.getHand(1).inspectCard(k)));
+   }
+   
+   public void RefreshTable() {   
+      // show everything to the user
+      myCardTable.setVisible(true);
    }
    
    public void updatePlayArea (Card[] card)
    {
-   // 0 - computer, 1 - human
+      // 0 - computer, 1 - human
       // move cards to playing area
       playedCardLabels[0].setIcon(GUICard.getIcon(card[0]));
       playedCardLabels[1].setIcon(GUICard.getIcon(card[1]));
