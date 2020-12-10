@@ -1,12 +1,3 @@
-import javax.swing.border.*;
-import javax.swing.*;
-import java.awt.*;
-import java.text.DecimalFormat;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-
 /**
  * Group Assignment for Module 6: Timed "Build" Game. For this 
  * assignment, we start by restructuring last weeks assignment to
@@ -22,6 +13,16 @@ import java.awt.event.ActionListener;
  * PHASE 3
  */
 
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import javax.swing.border.*;
+import java.text.DecimalFormat;
+import javax.swing.*;
+import java.awt.*;
+import java.util.*;
+
 public class Assig6
 {
    public static void main(String [] args)
@@ -30,6 +31,7 @@ public class Assig6
       GameView view = new GameView();
       GameController controller = new GameController(model, view);
       controller.playGame();
+      view.refreshTable();
    }
 }
 
@@ -98,7 +100,7 @@ class GameController
    private GameModel model;
    private GameView view;
    private Thread timer = new Thread(new Timer());
-   static Card[] playAreaCards;
+   boolean cardChosen = false;
    
    private class StartStopListener implements ActionListener
    {
@@ -125,12 +127,14 @@ class GameController
       }
    }
    
-   private class CannotPlayListener implements ActionListener
+   public class CannotPlayListener implements ActionListener
    {
       public void actionPerformed(ActionEvent e)
       {
          GameModel.myScore++;
          view.updateScore(GameModel.computerScore, GameModel.myScore);
+         checkBothCannot();
+         compTurn();
       }
    }
    
@@ -142,105 +146,259 @@ class GameController
       // Add ActionListeners to buttons
       GameView.startStop.addActionListener(new StartStopListener());
       GameView.cannotPlay.addActionListener(new CannotPlayListener());
+   }
+
+   public void playGame()
+   {
+      // Setup mouse listeners
+      for (int k = 0; k < GameModel.NUM_CARDS_PER_HAND; k++)
+      {
+         view.displayHands(k, model.getFramework());
+         view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
+         view.updatePlayArea(GameModel.playAreaCards);
+         final int thisIndex = k;
+         GameView.humanLabels[k].addMouseListener(new MouseAdapter()
+         {
+            public void mouseClicked(MouseEvent me)
+            {
+               cardChosen = true;
+               chooseStack(thisIndex);
+               cardChosen = false;
+            }
+         });
+      }
+   }
+   
+   private void chooseStack(int thisIndex)
+   {
+      if (!GameModel.gameOver)
+      {
+         if (cardChosen)
+         {
+            for (int i = 0; i < GameView.playedCardLabels.length; i++)
+            {
+               final int stack = i;
+               view.updateMessage("Now choose stack");
+               GameView.playedCardLabels[i].addMouseListener(new MouseAdapter()
+               {
+                  public void mouseClicked(MouseEvent me)
+                  {
+                     // Human turn
+                     humTurn(thisIndex, stack);
       
+                     
+                  }
+               });
+            }
+         }
+      }
+   }
+   
+   public void checkBothCannot()
+   {
+      if(GameModel.cannotPlayRounds == 2)
+      {
+         model.populatePlayArea();
+         GameModel.cannotPlayRounds = 0;
+      }
+   }
+   public void checkGameOver()
+   {
+      // If there are no more cards in deck, determine winner
+      if (GameModel.gameOver)
+      {
+         if (GameModel.myScore < GameModel.computerScore)
+         {
+            view.updateMessage("Game is over. You won!");
+         }
+         else if (GameModel.myScore > GameModel.computerScore)
+         {
+            view.updateMessage("Game is over. Computer won.");
+         }
+         else
+         {
+            view.updateMessage("Game is over. You both tied.");
+         }
+      }
+   }
+
+   private void humTurn(int thisIndex, int stack)
+   {
+      GameModel.playerTurn = GameModel.HUMAN;
+      if (model.humanTurn(thisIndex, stack))
+      {
+         // Update the game visuals
+         view.updateMessage("Successful move");
+         view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
+         view.updatePlayArea(GameModel.playAreaCards);
+         view.updateHand(model.getFramework());
+         GameModel.playerTurn = GameModel.COMP;
+         GameModel.cannotPlayRounds = 0;
+         checkGameOver();
+         
+         // For testing
+         System.out.println("Human " + model.getFramework().getHand(GameModel.HUMAN).toString());
+         System.out.print(GameModel.playAreaCards[0].toString() + " / ");
+         System.out.print(GameModel.playAreaCards[1].toString() + " / ");
+         System.out.println(GameModel.playAreaCards[2].toString());
+         // Computers turn
+         compTurn();
+      } 
+      else
+      {
+         view.updateMessage("Invalid move");
+      }
+   }
+
+   private void compTurn()
+   {
+      // Computers turn
+      if(model.computerTurn())
+      {
+         // Update game visuals
+         view.updateMessage("Computer played a card");
+         view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
+         view.updatePlayArea(GameModel.playAreaCards);
+         GameModel.cannotPlayRounds = 0;
+         checkGameOver();
+         
+         // For testing
+         System.out.println("Computer " + model.getFramework().getHand(GameModel.COMP).toString());
+         System.out.print(GameModel.playAreaCards[0].toString() + " / ");
+         System.out.print(GameModel.playAreaCards[1].toString() + " / ");
+         System.out.println(GameModel.playAreaCards[2].toString());
+      }
+      else
+      {
+         view.updateMessage("Computer could not play");
+         GameModel.computerScore++;
+         view.updateScore(GameModel.computerScore, GameModel.myScore);
+         GameModel.cannotPlayRounds++;
+         checkBothCannot();
+      }
+   }
+}
+
+class GameModel
+{
+   static int NUM_CARDS_PER_HAND = 7;
+   static int NUM_PLAYERS = 2;
+   static int myScore = 0, computerScore = 0;
+   int numPacksPerDeck = 1;
+   int numJokersPerPack = 2;
+   int numUnusedCardsPerPack = 0;
+   Card[] unusedCardsPerPack = null;
+   private CardGameFramework buildGame;
+   static Card[] playAreaCards;
+   static int cannotPlayRounds = 0;
+   static boolean gameOver = false;
+   static final int COMP = 0;
+   static final int HUMAN = 1;
+   static int playerTurn = HUMAN;
+   //static Card chosenCard, chosenStack;
+   
+   GameModel()
+   {
+      buildGame = new CardGameFramework(numPacksPerDeck, numJokersPerPack, 
+            numUnusedCardsPerPack, unusedCardsPerPack, NUM_PLAYERS, 
+            NUM_CARDS_PER_HAND);// Load Icons from GUICard class
+      GUICard.loadCardIcons();
+      buildGame.deal();
+      populatePlayArea();
+   }
+   
+   public void populatePlayArea()
+   {
       // Populate stacks with initial cards
       playAreaCards = new Card[3];
       for (int i = 0; i < playAreaCards.length; i++)
       {
-         playAreaCards[i] = model.getFramework().getCardFromDeck();
+         playAreaCards[i] = buildGame.getCardFromDeck();
       }
    }
    
-   public void playGame()
+   public boolean humanTurn(int idx, int stack)
    {
-      for (int k = 0; k < GameModel.NUM_CARDS_PER_HAND; k++)
+      if (buildGame.getNumCardsRemainingInDeck() > 0)
       {
-         final int thisIndex = k;
-         view.displayHands(thisIndex, model.getFramework());
-         view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
-         view.updatePlayArea(playAreaCards);
-         
-         GameView.humanLabels[k].addMouseListener(new MouseAdapter() 
+         // If chosen card in hand is one less or one more in value than stack card
+         Card myCard = buildGame.getHand(HUMAN).inspectCard(idx);
+         if (isValidMove(myCard, playAreaCards[stack]))
          {
-
-            public void mouseClicked(MouseEvent me)
-            {
-               playMyCard(thisIndex);
-            }
-               
-            private void playMyCard(int idx)
-            {
-               view.updateMessage("Now choose a stack");
-               for (int i = 0; i < GameView.playedCardLabels.length; i++)
-               {
-                  final int stack = i;
-                  GameView.playedCardLabels[i].addMouseListener(new MouseAdapter() {
-                     public void mouseClicked(MouseEvent mo)
-                     {
-                        chooseStack(stack);
-                     }
-                     
-                     private void chooseStack(int stack)
-                     {
-                        String result = "";
-                        
-                        // If chosen card in hand is one less or one more in value than stack card
-                        Card myCard = model.getFramework().getHand(1).inspectCard(idx);
-                        if (Card.valueToInt(myCard) == (Card.valueToInt(playAreaCards[stack]) + 1)
-                              || Card.valueToInt(myCard) == (Card.valueToInt(playAreaCards[stack]) - 1))
-                        {
-                           // Change message
-                           view.updateMessage("Successful move, choose another card");
-                           
-                           // Play card and draw from deck
-                           playAreaCards[stack] = model.getFramework().playCard(1, idx);
-                           model.getFramework().takeCard(1);
-                           
-                           // Update playing area, user's hand, and number of cards left in the deck
-                           view.updatePlayArea(playAreaCards);
-                           view.updateHand(idx, model.getFramework());
-                           view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
-                        }
-                        else
-                        {
-                           view.updateMessage("Invalid move");
-                        }
-                        
-                        //
-                        for (int x = 0; x < idx; x++)
-                        {
-                           for (int z = 0; z < stack; z++)
-                           {
-                              if (Card.valueToInt(model.getFramework().getHand(0).inspectCard(x)) == (Card.valueToInt(playAreaCards[z]) + 1)
-                                    || Card.valueToInt(model.getFramework().getHand(0).inspectCard(x)) == (Card.valueToInt(playAreaCards[z]) - 1))
-                              {
-                                 view.updateMessage("Computer player placed card");
-                                 
-                                 //
-                                 playAreaCards[z] = model.getFramework().playCard(0, x);
-                                 model.getFramework().takeCard(0);
-                                 
-                                 //
-                                 view.updatePlayArea(playAreaCards);
-                                 view.updateHand(x, model.getFramework());
-                                 view.updateDeck(model.getFramework().getNumCardsRemainingInDeck());
-                                 break;
-                              }
-                              else
-                              {
-                                 GameModel.computerScore++;
-                                 view.updateScore(GameModel.computerScore, GameModel.myScore);
-                              }
-                           }
-                        }
-                     }
-                  });
-               }
-               //view.updateScore(GameModel.myScore, GameModel.computerScore);
-            }
-         });
-         view.updateHand(k, model.getFramework());
+            // Play card and draw from deck
+            playAreaCards[stack] = play(HUMAN, idx);
+            draw(HUMAN);
+            return true;
+         } 
+         else
+         {
+            return false;
+         }
       }
+      else
+      {
+         gameOver = true;
+         return true;
+      }
+   }
+
+   public boolean computerTurn()
+   {
+      if (buildGame.getNumCardsRemainingInDeck() > 0)
+      {
+         // Loop through the computer players cards
+         for (int x = 0; x < GameModel.NUM_CARDS_PER_HAND; x++)
+         {
+            for (int z = 0; z < playAreaCards.length; z++)
+            {
+               if (isValidMove(buildGame.getHand(COMP).inspectCard(x), playAreaCards[z]))
+               {
+                  // Play card, and take a replacement card from the deck
+                  playAreaCards[z] = buildGame.playCard(COMP, x);
+                  buildGame.takeCard(COMP);
+                  return true;
+               }
+            }
+            // If you reach the end of outer loop, add to cannot play
+            if (x == GameModel.NUM_CARDS_PER_HAND - 1)
+            {
+               return false;
+            }
+         }
+         return false;
+      }
+      else
+      {
+         gameOver = true;
+         return true;
+      }
+   }
+   
+   public CardGameFramework getFramework()
+   {
+      return buildGame;
+   }
+   
+   public boolean draw(int player)
+   {
+      return buildGame.takeCard(player);
+   }
+   
+   public Card play(int player, int card)
+   {
+      return buildGame.playCard(player, card);
+   }
+   
+   public boolean isValidMove(Card player, Card stack)
+   {
+      return Card.valueToInt(player) == (Card.valueToInt(stack) + 1)
+            || Card.valueToInt(player) == (Card.valueToInt(stack) - 1);
+   }
+
+   static Card randomCardGenerator()
+   {
+      Deck deck = new Deck();
+      return deck.inspectCard(deck.rand.nextInt(deck.getNumCards()));
    }
 }
 
@@ -277,7 +435,7 @@ class GameView
    
    public void display()
    {
-      // Add two random cards in the play region (simulating a computer/hum ply)
+      // Add three random cards in the play region (simulating a computer/hum ply)
       playedCardLabels[0] = new JLabel(GUICard.getIcon(GameModel.randomCardGenerator()));
       playedCardLabels[1] = new JLabel(GUICard.getIcon(GameModel.randomCardGenerator()));
       playedCardLabels[2] = new JLabel(GUICard.getIcon(GameModel.randomCardGenerator()));
@@ -340,13 +498,13 @@ class GameView
       myCardTable.setVisible(true);
    }
    
-   public void displayHands(int k, CardGameFramework LowCardGame)
+   public void displayHands(int k, CardGameFramework buildGame)
    {
       // deal back cards to computer
       computerLabels[k] = new JLabel(GUICard.getBackCardIcon());
 
       // give human random cards
-      humanLabels[k] = new JLabel(GUICard.getIcon(LowCardGame.getHand(1).inspectCard(k)));
+      humanLabels[k] = new JLabel(GUICard.getIcon(buildGame.getHand(1).inspectCard(k)));
       
       // deal back cards to computer
       myCardTable.pnlComputerHand.add(computerLabels[k]);
@@ -375,12 +533,16 @@ class GameView
       deckLabel.setText("# of Cards in the Deck: " + cards);
    }
    
-   public void updateHand(int k, CardGameFramework LowCardGame)
+   public void updateHand(CardGameFramework buildGame)
    {
-      humanLabels[k].setIcon(GUICard.getIcon(LowCardGame.getHand(1).inspectCard(k)));
+      for (int k = 0; k < GameModel.NUM_CARDS_PER_HAND; k++)
+      {
+         humanLabels[k].setIcon(GUICard.getIcon(buildGame.getHand(GameModel.HUMAN).inspectCard(k)));
+         humanLabels[k].setVisible(true);
+      }
    }
    
-   public void RefreshTable() {   
+   public void refreshTable() {   
       // show everything to the user
       myCardTable.setVisible(true);
    }
@@ -396,38 +558,6 @@ class GameView
       playedCardLabels[0].setVisible(true);
       playedCardLabels[1].setVisible(true);
       playedCardLabels[2].setVisible(true);
-   }
-}
-
-class GameModel
-{
-   static int NUM_CARDS_PER_HAND = 7;
-   static int NUM_PLAYERS = 2;
-   static int myScore = 0, computerScore = 0;
-   int numPacksPerDeck = 1;
-   int numJokersPerPack = 2;
-   int numUnusedCardsPerPack = 0;
-   Card[] unusedCardsPerPack = null;
-   private CardGameFramework lowCardGame;
-   
-   GameModel()
-   {
-      lowCardGame = new CardGameFramework(numPacksPerDeck, numJokersPerPack, 
-            numUnusedCardsPerPack, unusedCardsPerPack, NUM_PLAYERS, 
-            NUM_CARDS_PER_HAND);// Load Icons from GUICard class
-      GUICard.loadCardIcons();
-      lowCardGame.deal();
-   }
-   
-   public CardGameFramework getFramework()
-   {
-      return lowCardGame;
-   }
-
-   static Card randomCardGenerator()
-   {
-      Deck deck = new Deck();
-      return deck.inspectCard(deck.rand.nextInt(deck.getNumCards()));
    }
 }
 
@@ -589,9 +719,9 @@ class GUICard
 class Card
 {
    // Data
-   public static enum Suit { clubs, spades, hearts, diamonds };
-   public static char[] valuRanks = {'2', '3', '4', '5', '6', '7', '8',
-         '9', 'T', 'J', 'Q', 'K', 'A', 'X'};
+   public static enum Suit { clubs, diamonds, hearts, spades };
+   public static char[] valuRanks = {'A', '2', '3', '4', '5', '6', '7', '8',
+         '9', 'T', 'J', 'Q', 'K', 'X'};
    private char value;
    private Suit suit;
    private boolean errorFlag;
